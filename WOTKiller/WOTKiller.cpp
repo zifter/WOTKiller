@@ -3,12 +3,17 @@
 
 #include "stdafx.h"
 
+#include <Shlobj.h>
 #include <iostream>
 #include <windows.h>
 #include <strsafe.h>
 #include <stdio.h>
 #include <tchar.h>
 #include <psapi.h>
+#include "Aclapi.h"
+
+#pragma comment(lib, "psapi.lib")
+using std::cout; using std::endl;
 
 void PrintProcessNameAndID( DWORD processID );
 void ErrorExit(LPTSTR lpszFunction);
@@ -22,9 +27,8 @@ int main( void )
 
 	if ( !EnumProcesses( aProcesses, sizeof(aProcesses), &cbNeeded ) )
 	{
-		return 1;
+		cout << "Enum Processes Failed.  Error code: " << GetLastError() << endl;
 	}
-
 
 	// Calculate how many process identifiers were returned.
 
@@ -54,7 +58,7 @@ void PrintProcessNameAndID( DWORD processID )
 
 	// Get a handle to the process.
 
-	HANDLE hProcess = OpenProcess( PROCESS_QUERY_INFORMATION |
+	HANDLE hProcess = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_TERMINATE |
 		PROCESS_VM_READ,
 		FALSE, processID );
 
@@ -79,7 +83,10 @@ void PrintProcessNameAndID( DWORD processID )
 		_tprintf( TEXT("%s  (PID: %u)\n"), szProcessName, processID );
 		if(!_tcscmp(szProcessName, TEXT("AIMP3.exe")))
 		{
-			BOOL flag = TerminateProcess(hProcess, 1);
+			DWORD fdwExit = 0;
+			GetExitCodeProcess(hProcess, &fdwExit);
+			BOOL flag = TerminateProcess(hProcess, fdwExit);
+
 			if(!flag)
 			{
 				ErrorExit(TEXT("PrintProcessNameAndID"));
@@ -125,4 +132,3 @@ void ErrorExit(LPTSTR lpszFunction)
 	LocalFree(lpDisplayBuf);
 	ExitProcess(dw); 
 }
-

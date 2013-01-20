@@ -4,6 +4,7 @@ Debug
 ipch
 *.sdf
 *.opensdf
+*.suo
 
 # Compiled Object files
 *.slo
