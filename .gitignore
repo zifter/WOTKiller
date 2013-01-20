@@ -1,5 +1,9 @@
 # VS trash
 Debug.win32
+Debug
+ipch
+*.sdf
+*.opensdf
 
 # Compiled Object files
 *.slo

@@ -5,9 +5,45 @@
 
 #include <iostream>
 #include <windows.h>
+#include <strsafe.h>
 #include <stdio.h>
 #include <tchar.h>
 #include <psapi.h>
+
+void PrintProcessNameAndID( DWORD processID );
+void ErrorExit(LPTSTR lpszFunction);
+
+int main( void )
+{
+	// Get the list of process identifiers.
+
+	DWORD aProcesses[1024], cbNeeded, cProcesses;
+	unsigned int i;
+
+	if ( !EnumProcesses( aProcesses, sizeof(aProcesses), &cbNeeded ) )
+	{
+		return 1;
+	}
+
+
+	// Calculate how many process identifiers were returned.
+
+	cProcesses = cbNeeded / sizeof(DWORD);
+
+	// Print the name and process identifier for each process.
+
+	for ( i = 0; i < cProcesses; i++ )
+	{
+		if( aProcesses[i] != 0 )
+		{
+			PrintProcessNameAndID( aProcesses[i] );
+		}
+	}
+
+	int a;
+	std::cin >> a;
+	return 0;
+}
 
 // To ensure correct resolution of symbols, add Psapi.lib to TARGETLIBS
 // and compile with -DPSAPI_VERSION=1
@@ -41,42 +77,52 @@ void PrintProcessNameAndID( DWORD processID )
 	if(_tcscmp(szProcessName, TEXT("<unknown>")))
 	{
 		_tprintf( TEXT("%s  (PID: %u)\n"), szProcessName, processID );
+		if(!_tcscmp(szProcessName, TEXT("AIMP3.exe")))
+		{
+			BOOL flag = TerminateProcess(hProcess, 1);
+			if(!flag)
+			{
+				ErrorExit(TEXT("PrintProcessNameAndID"));
+			}
+		}
 	}
-	
+
 
 	// Release the handle to the process.
 
 	CloseHandle( hProcess );
 }
 
-int main( void )
-{
-	// Get the list of process identifiers.
+void ErrorExit(LPTSTR lpszFunction) 
+{ 
+	// Retrieve the system error message for the last-error code
 
-	DWORD aProcesses[1024], cbNeeded, cProcesses;
-	unsigned int i;
+	LPVOID lpMsgBuf;
+	LPVOID lpDisplayBuf;
+	DWORD dw = GetLastError(); 
 
-	if ( !EnumProcesses( aProcesses, sizeof(aProcesses), &cbNeeded ) )
-	{
-		return 1;
-	}
+	FormatMessage(
+		FORMAT_MESSAGE_ALLOCATE_BUFFER | 
+		FORMAT_MESSAGE_FROM_SYSTEM |
+		FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL,
+		dw,
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		(LPTSTR) &lpMsgBuf,
+		0, NULL );
 
+	// Display the error message and exit the process
 
-	// Calculate how many process identifiers were returned.
+	lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT, 
+		(lstrlen((LPCTSTR)lpMsgBuf)+lstrlen((LPCTSTR)lpszFunction)+40)*sizeof(TCHAR)); 
+	StringCchPrintf((LPTSTR)lpDisplayBuf, 
+		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+		TEXT("%s failed with error %d: %s"), 
+		lpszFunction, dw, lpMsgBuf); 
+	MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK); 
 
-	cProcesses = cbNeeded / sizeof(DWORD);
-
-	// Print the name and process identifier for each process.
-
-	for ( i = 0; i < cProcesses; i++ )
-	{
-		if( aProcesses[i] != 0 )
-		{
-			PrintProcessNameAndID( aProcesses[i] );
-		}
-	}
-
-	int a;
-	std::cin >> a;
-	return 0;
+	LocalFree(lpMsgBuf);
+	LocalFree(lpDisplayBuf);
+	ExitProcess(dw); 
 }
+
