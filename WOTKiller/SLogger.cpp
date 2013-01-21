@@ -26,7 +26,7 @@ char* LogLevelName[] =
 //-------------------------------------------------------------------------
 void LoggerImpl( LogLevel level, const char* str, ... )
 {
-	if(level < ENABLE_MIN_LABEL)
+	if(level < MIN_LEVEL)
 	{
 		return;
 	}

@@ -10,7 +10,7 @@ enum LogLevel
 	Warning,
 	Error,
 };
-#define ENABLE_MIN_LABEL Debug
+#define MIN_LEVEL Debug
 //-------------------------------------------------------------------------
 class SLogger
 {
@@ -25,9 +25,27 @@ public:
 //-------------------------------------------------------------------------
 void LoggerImpl(LogLevel level, const char* str, ...);
 //-------------------------------------------------------------------------
-#define SLOG_DEBUG(str, ...)	LoggerImpl(Debug,	str, __VA_ARGS__)
-#define SLOG_TRACE(str, ...)	LoggerImpl(Trace,	str, __VA_ARGS__)
-#define SLOG_WARNING(str, ...)	LoggerImpl(Warning, str, __VA_ARGS__)
-#define SLOG_ERROR(str, ...)	LoggerImpl(Error,	str, __VA_ARGS__)
+#if MIN_LEVEL == Debug
+	#define SLOG_DEBUG(str, ...)	LoggerImpl(Debug,	str, __VA_ARGS__)
+	#define SLOG_TRACE(str, ...)	LoggerImpl(Trace,	str, __VA_ARGS__)
+	#define SLOG_WARNING(str, ...)	LoggerImpl(Warning, str, __VA_ARGS__)
+	#define SLOG_ERROR(str, ...)	LoggerImpl(Error,	str, __VA_ARGS__)
+#elif MIN_LEVEL == Trace
+	#define SLOG_DEBUG(str, ...)	
+	#define SLOG_TRACE(str, ...)	LoggerImpl(Trace,	str, __VA_ARGS__)
+	#define SLOG_WARNING(str, ...)	LoggerImpl(Warning, str, __VA_ARGS__)
+	#define SLOG_ERROR(str, ...)	LoggerImpl(Error,	str, __VA_ARGS__)
+#elif MIN_LEVEL == Warning
+	#define SLOG_DEBUG(str, ...)	
+	#define SLOG_TRACE(str, ...)	
+	#define SLOG_WARNING(str, ...)	LoggerImpl(Warning, str, __VA_ARGS__)
+	#define SLOG_ERROR(str, ...)	LoggerImpl(Error,	str, __VA_ARGS__)
+#elif MIN_LEVEL == Error
+	#define SLOG_DEBUG(str, ...)	
+	#define SLOG_TRACE(str, ...)	
+	#define SLOG_WARNING(str, ...)	
+	#define SLOG_ERROR(str, ...)	LoggerImpl(Error,	str, __VA_ARGS__)
+#endif
+
 //-------------------------------------------------------------------------
 #endif // __SLOGGER_H_
