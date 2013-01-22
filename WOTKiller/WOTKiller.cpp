@@ -22,8 +22,16 @@ char RegisterName[] = "SOFTWARE\\WOTKiller";
 
 typedef struct _SRegInfo
 {
-	float timeout;
+	int		timeout;
+	int		timeLimit;
+	int		day;
+	bool	enable;
 } SRegInfo;
+
+static SRegInfo s_GlobalInfo;
+
+bool ConverToChar( SRegInfo& info, char* data );
+bool ConverToInfo( char* data, SRegInfo& info );
 
 void PrintProcessNameAndID( DWORD processID );
 void ErrorExit(LPTSTR lpszFunction);
@@ -41,7 +49,12 @@ int main( void )
 {
 	CreateRegister(RegisterName);
 
-	SRegInfo info;
+	SRegInfo info = {123, 1000, 4, false};
+	
+	size_t s = sizeof(unsigned long long);
+	s = sizeof(double);
+
+	WriteRegInfo(info);
 	ReadRegInfo(info);
 
 	HANDLE hProcess = Find(TEXT("AIMP3.exe"));
@@ -121,11 +134,11 @@ void Kill( HANDLE hProc )
 		LogLastErrorMessage(TEXT("GetExitCodeProcess"));
 	}
 
-	if(!TerminateProcess(hProc, fdwExit))
-	{
-		LogLastErrorMessage(TEXT("Cannot kill process"));
-		return;
-	}
+	//if(!TerminateProcess(hProc, fdwExit))
+	//{
+	//	LogLastErrorMessage(TEXT("Cannot kill process"));
+	//	return;
+	//}
 
 	SLOG_TRACE("Process are killed");
 }
@@ -186,8 +199,58 @@ bool ReadRegInfo( SRegInfo& info )
 		SLOG_TRACE("Error opening key. Error code: %i", openRes);
 	}
 
-	LPCTSTR value = TEXT("Timeout");
-	LPCTSTR data = "Time\0";
+	LPCTSTR value = TEXT("data");
+
+	char data[64] = {0};
+	DWORD Type;
+
+	DWORD size = 63;
+	LONG setRes = RegQueryValueEx( hKey, value, NULL, &Type, (LPBYTE)data, &size);
+
+	ConverToInfo(data, info);
+
+	if (setRes == ERROR_SUCCESS) 
+	{
+		SLOG_TRACE("Success reading to Registry.");
+	} 
+	else 
+	{
+		SLOG_TRACE("Error reading from Registry. Error code: %i", openRes);
+	}
+
+	LONG closeOut = RegCloseKey(hKey);
+
+	if (closeOut == ERROR_SUCCESS) 
+	{
+		SLOG_TRACE("Success closing key.");
+	} 
+	else 
+	{
+		SLOG_TRACE("Error closing key. Error code: %i", openRes);
+	}
+
+	return true;
+}
+//-------------------------------------------------------------------------
+bool WriteRegInfo( SRegInfo& info )
+{
+	HKEY hKey;
+
+	LONG openRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, RegisterName, 0, KEY_ALL_ACCESS , &hKey);
+
+	if (openRes==ERROR_SUCCESS) 
+	{
+		SLOG_TRACE("Success opening key.");
+	} 
+	else 
+	{
+		SLOG_TRACE("Error opening key. Error code: %i", openRes);
+	}
+
+	LPCTSTR value = TEXT("data");
+	char str[64] = {0};
+	ConverToChar(info, str);
+	LPCTSTR data = TEXT(str) ;
 
 	LONG setRes = RegSetValueEx (hKey, value, 0, REG_SZ, (LPBYTE)data, strlen(data)+1);
 
@@ -211,11 +274,6 @@ bool ReadRegInfo( SRegInfo& info )
 		SLOG_TRACE("Error closing key. Error code: %i", openRes);
 	}
 
-	return true;
-}
-//-------------------------------------------------------------------------
-bool WriteRegInfo( SRegInfo& info )
-{
 	return true;
 }
 //-------------------------------------------------------------------------
@@ -257,4 +315,26 @@ bool CreateRegister(const char strKeyName[])
 	RegCloseKey(hKey);
 
 	return retValue;
+}
+//-------------------------------------------------------------------------
+bool ConverToChar( SRegInfo& info, char* data )
+{
+	sprintf_s(data, 64, "%d:%d:%d:%d", (info.timeout + info.timeLimit), (info.timeout - info.timeLimit), (info.day<<8), (info.enable + 1 << 3) );
+	return true;
+}
+//-------------------------------------------------------------------------
+bool ConverToInfo( char* data, SRegInfo& info )
+{
+	sscanf_s(data, "%d:%d:%d:%d", &info.timeout, &info.timeLimit, &info.day, &info.enable );
+
+	info.timeout += info.timeLimit;
+	info.timeout /= 2;
+
+	info.timeLimit -= info.timeout;
+	info.timeLimit *= -1;
+
+	info.day = info.day >> 8;
+	info.enable = (info.enable >> 3) - 1;
+
+	return true;
 }
