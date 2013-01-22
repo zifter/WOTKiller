@@ -18,6 +18,8 @@
 #pragma comment(lib, "psapi.lib")
 using std::cout; using std::endl;
 
+char RegisterName[] = "SOFTWARE\\WOTKiller";
+
 typedef struct _SRegInfo
 {
 	float timeout;
@@ -30,12 +32,18 @@ HANDLE Find(TCHAR* proc);
 void Kill(HANDLE hProc);
 void ShowErrorMessage(LPTSTR text);
 void LogLastErrorMessage(LPCTSTR text);
+bool CreateRegister(const char strKeyName[]);
 
 bool ReadRegInfo(SRegInfo& info);
 bool WriteRegInfo(SRegInfo& info);
 
 int main( void )
 {
+	CreateRegister(RegisterName);
+
+	SRegInfo info;
+	ReadRegInfo(info);
+
 	HANDLE hProcess = Find(TEXT("AIMP3.exe"));
 	if(hProcess)
 	{
@@ -47,7 +55,8 @@ int main( void )
 	{
 		SLOG_DEBUG("Process not founded.");
 	}
-
+	int a;
+	std::cin >> a;
 	return 0;
 }
 //-------------------------------------------------------------------------
@@ -164,10 +173,88 @@ void ShowErrorMessage( LPTSTR text )
 //-------------------------------------------------------------------------
 bool ReadRegInfo( SRegInfo& info )
 {
+	HKEY hKey;
+
+	LONG openRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, RegisterName, 0, KEY_ALL_ACCESS , &hKey);
+
+	if (openRes==ERROR_SUCCESS) 
+	{
+		SLOG_TRACE("Success opening key.");
+	} 
+	else 
+	{
+		SLOG_TRACE("Error opening key. Error code: %i", openRes);
+	}
+
+	LPCTSTR value = TEXT("Timeout");
+	LPCTSTR data = "Time\0";
+
+	LONG setRes = RegSetValueEx (hKey, value, 0, REG_SZ, (LPBYTE)data, strlen(data)+1);
+
+	if (setRes == ERROR_SUCCESS) 
+	{
+		SLOG_TRACE("Success writing to Registry.");
+	} 
+	else 
+	{
+		SLOG_TRACE("Error writing to Registry. Error code: %i", openRes);
+	}
+
+	LONG closeOut = RegCloseKey(hKey);
+
+	if (closeOut == ERROR_SUCCESS) 
+	{
+		SLOG_TRACE("Success closing key.");
+	} 
+	else 
+	{
+		SLOG_TRACE("Error closing key. Error code: %i", openRes);
+	}
+
 	return true;
 }
 //-------------------------------------------------------------------------
 bool WriteRegInfo( SRegInfo& info )
 {
 	return true;
+}
+//-------------------------------------------------------------------------
+bool CreateRegister(const char strKeyName[]) 
+{	
+	HKEY hKey = NULL;
+	bool retValue = true;
+
+	//Step 1: Open the key
+	long sts = RegOpenKeyEx(HKEY_LOCAL_MACHINE, strKeyName, 0, KEY_READ, &hKey);
+
+	//Step 2: If failed, create the key
+	if (ERROR_NO_MATCH == sts || ERROR_FILE_NOT_FOUND == sts)
+	{
+		SLOG_TRACE("Creating registry key %s", strKeyName);
+		
+		long retError = RegCreateKeyEx(HKEY_LOCAL_MACHINE, strKeyName, 0L, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL );
+
+		if ( retError != ERROR_SUCCESS)
+		{
+			SLOG_ERROR("Could not create registry key %. Error code %i", strKeyName, retError);
+		}
+		else
+		{
+			SLOG_TRACE("Key created");
+		}
+		retValue = false;
+	}
+	else if (ERROR_SUCCESS != sts)
+	{
+		SLOG_ERROR("Cannot open registry key %s. Error code %i", strKeyName, sts);
+		retValue = false;
+	}
+	else //If it already existed, get the value from the key.
+	{
+		SLOG_WARNING("Registry key already exist %s.", strKeyName);
+	}
+
+	RegCloseKey(hKey);
+
+	return retValue;
 }

@@ -12,7 +12,6 @@
 //-------------------------------------------------------------------------
 std::ofstream	SLogger::stream;
 TCHAR			SLogger::path[1024] = {0};
-char			SLogger::buffer[1024] = {0};
 //-------------------------------------------------------------------------
 char* LogLevelName[] = 
 {	
@@ -24,7 +23,7 @@ char* LogLevelName[] =
 //-------------------------------------------------------------------------
 #define MAX_LENGTH_FOR_FORMATED_STRING 64
 //-------------------------------------------------------------------------
-void LoggerImpl( LogLevel level, const char* str, ... )
+void LoggerImpl( LogLevel level, const char* str )
 {
 	if(level < MIN_LEVEL)
 	{
@@ -32,11 +31,6 @@ void LoggerImpl( LogLevel level, const char* str, ... )
 	}
 
 	SLogger log;
-
-	va_list arglist;
-	va_start(arglist, str);
-	vsprintf_s(log.buffer, str, arglist);
-	va_end(arglist);
 
 	time_t rawtime;
 	struct tm * timeinfo = new struct tm;
@@ -69,7 +63,7 @@ void LoggerImpl( LogLevel level, const char* str, ... )
 
 	// text
 	log.stream 
-		<< log.buffer << "\n";
+		<< str << "\n";
 
 	delete timeinfo;
 }
