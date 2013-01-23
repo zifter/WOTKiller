@@ -15,6 +15,7 @@
 
 #include "Aclapi.h"
 #include "SLogger.h"
+#include "Sloth.h"
 
 #pragma comment(lib, "psapi.lib")
 using std::cout; using std::endl;
@@ -43,23 +44,20 @@ HANDLE Find(TCHAR* proc);
 void Kill(HANDLE hProc);
 void ShowErrorMessage(LPTSTR text);
 void LogLastErrorMessage(LPCTSTR text);
-bool CreateRegister(const char strKeyName[]);
-
-bool ReadRegInfo(SRegInfo& info);
-bool WriteRegInfo(SRegInfo& info);
 
 int main( void )
 {
 	srand(time(NULL));
-	CreateRegister(RegisterName);
 
 	SRegInfo info = {123, 1000, 4, false};
 	
-	size_t s = sizeof(unsigned long long);
-	s = sizeof(double);
-
-	WriteRegInfo(info);
-	ReadRegInfo(info);
+	char data1[128];
+	ConverToChar(info, data1);
+	Sloth::WriteRegInfo(RegisterName, "data", data1);
+	
+	char data2[128];
+	Sloth::ReadRegInfo(RegisterName, "data", data2);
+	ConverToInfo(data2, info);
 
 	HANDLE hProcess = Find(TEXT("AIMP3.exe"));
 	if(hProcess)
@@ -186,139 +184,6 @@ void LogLastErrorMessage(LPCTSTR text)
 void ShowErrorMessage( LPTSTR text )
 {
 	MessageBox(NULL, text, TEXT("Error"), MB_OK); 
-}
-//-------------------------------------------------------------------------
-bool ReadRegInfo( SRegInfo& info )
-{
-	HKEY hKey;
-
-	LONG openRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, RegisterName, 0, KEY_ALL_ACCESS , &hKey);
-
-	if (openRes==ERROR_SUCCESS) 
-	{
-		SLOG_TRACE("Success opening key.");
-	} 
-	else 
-	{
-		SLOG_TRACE("Error opening key. Error code: %i", openRes);
-	}
-
-	LPCTSTR value = TEXT("data");
-
-	char data[128] = {0};
-	DWORD Type;
-
-	DWORD size = 63;
-	LONG setRes = RegQueryValueEx( hKey, value, NULL, &Type, (LPBYTE)data, &size);
-
-	ConverToInfo(data, info);
-
-	if (setRes == ERROR_SUCCESS) 
-	{
-		SLOG_TRACE("Success reading to Registry.");
-	} 
-	else 
-	{
-		SLOG_TRACE("Error reading from Registry. Error code: %i", openRes);
-	}
-
-	LONG closeOut = RegCloseKey(hKey);
-
-	if (closeOut == ERROR_SUCCESS) 
-	{
-		SLOG_TRACE("Success closing key.");
-	} 
-	else 
-	{
-		SLOG_TRACE("Error closing key. Error code: %i", openRes);
-	}
-
-	return true;
-}
-//-------------------------------------------------------------------------
-bool WriteRegInfo( SRegInfo& info )
-{
-	HKEY hKey;
-
-	LONG openRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, RegisterName, 0, KEY_ALL_ACCESS , &hKey);
-
-	if (openRes==ERROR_SUCCESS) 
-	{
-		SLOG_TRACE("Success opening key.");
-	} 
-	else 
-	{
-		SLOG_TRACE("Error opening key. Error code: %i", openRes);
-	}
-
-	LPCTSTR value = TEXT("data");
-	char str[128] = {0};
-	ConverToChar(info, str);
-	LPCTSTR data = TEXT(str) ;
-
-	LONG setRes = RegSetValueEx (hKey, value, 0, REG_SZ, (LPBYTE)data, strlen(data)+1);
-
-	if (setRes == ERROR_SUCCESS) 
-	{
-		SLOG_TRACE("Success writing to Registry.");
-	} 
-	else 
-	{
-		SLOG_TRACE("Error writing to Registry. Error code: %i", openRes);
-	}
-
-	LONG closeOut = RegCloseKey(hKey);
-
-	if (closeOut == ERROR_SUCCESS) 
-	{
-		SLOG_TRACE("Success closing key.");
-	} 
-	else 
-	{
-		SLOG_TRACE("Error closing key. Error code: %i", openRes);
-	}
-
-	return true;
-}
-//-------------------------------------------------------------------------
-bool CreateRegister(const char strKeyName[]) 
-{	
-	HKEY hKey = NULL;
-	bool retValue = true;
-
-	//Step 1: Open the key
-	long sts = RegOpenKeyEx(HKEY_LOCAL_MACHINE, strKeyName, 0, KEY_READ, &hKey);
-
-	//Step 2: If failed, create the key
-	if (ERROR_NO_MATCH == sts || ERROR_FILE_NOT_FOUND == sts)
-	{
-		SLOG_TRACE("Creating registry key %s", strKeyName);
-		
-		long retError = RegCreateKeyEx(HKEY_LOCAL_MACHINE, strKeyName, 0L, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL );
-
-		if ( retError != ERROR_SUCCESS)
-		{
-			SLOG_ERROR("Could not create registry key %. Error code %i", strKeyName, retError);
-		}
-		else
-		{
-			SLOG_TRACE("Key created");
-		}
-		retValue = false;
-	}
-	else if (ERROR_SUCCESS != sts)
-	{
-		SLOG_ERROR("Cannot open registry key %s. Error code %i", strKeyName, sts);
-		retValue = false;
-	}
-	else //If it already existed, get the value from the key.
-	{
-		SLOG_WARNING("Registry key already exist %s.", strKeyName);
-	}
-
-	RegCloseKey(hKey);
-
-	return retValue;
 }
 //-------------------------------------------------------------------------
 bool ConverToChar( SRegInfo& info, char* data )

@@ -4,9 +4,9 @@
 #include <shlwapi.h>
 #include <windows.h>
 #include <shlobj.h>
-#include <stdarg.h>
-/*#include <stdio.h>*/
 #include <ctime>
+#include <tchar.h>
+#include <strsafe.h>
 //-------------------------------------------------------------------------
 #pragma comment(lib,"shlwapi.lib")
 //-------------------------------------------------------------------------
