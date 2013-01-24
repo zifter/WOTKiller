@@ -3,7 +3,6 @@
 
 #include "stdafx.h"
 
-#include <Shlobj.h>
 #include <iostream>
 #include <windows.h>
 #include <strsafe.h>
@@ -37,13 +36,7 @@ static SRegInfo s_GlobalInfo;
 bool ConverToChar( SRegInfo& info, char* data );
 bool ConverToInfo( char* data, SRegInfo& info );
 
-void PrintProcessNameAndID( DWORD processID );
-void ErrorExit(LPTSTR lpszFunction);
-
-HANDLE Find(TCHAR* proc);
-void Kill(HANDLE hProc);
 void ShowErrorMessage(LPTSTR text);
-void LogLastErrorMessage(LPCTSTR text);
 
 int main( void )
 {
@@ -59,11 +52,11 @@ int main( void )
 	Sloth::ReadRegInfo(RegisterName, "data", data2);
 	ConverToInfo(data2, info);
 
-	HANDLE hProcess = Find(TEXT("AIMP3.exe"));
+	HANDLE hProcess = Sloth::Find(TEXT("AIMP3.exe"));
 	if(hProcess)
 	{
 		SLOG_DEBUG("Process %s founded!", "AIMP3.exe");
-		Kill(hProcess);
+		Sloth::Kill(hProcess);
 		CloseHandle(hProcess);
 	}
 	else
@@ -74,112 +67,7 @@ int main( void )
 	std::cin >> a;
 	return 0;
 }
-//-------------------------------------------------------------------------
-HANDLE Find( TCHAR* proc )
-{
-	// Get the list of process identifiers.
-	DWORD aProcesses[1024], cbNeeded, cProcesses;
-	unsigned int i;
 
-	if ( !EnumProcesses( aProcesses, sizeof(aProcesses), &cbNeeded ) )
-	{
-		cout << "Enum Processes Failed.  Error code: " << GetLastError() << endl;
-	}
-
-	// Calculate how many process identifiers were returned.
-	cProcesses = cbNeeded / sizeof(DWORD);
-
-	TCHAR szProcessName[MAX_PATH] = TEXT("<unknown>");
-
-	// Find process
-	for ( i = 0; i < cProcesses; i++ )
-	{
-		if( aProcesses[i] != 0 )
-		{
-			// Get a handle to the process.
-			HANDLE hProcess = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_TERMINATE |
-				PROCESS_VM_READ,
-				FALSE, aProcesses[i] );
-
-			// Get the process name.
-			if (NULL != hProcess )
-			{
-				HMODULE hMod;
-				DWORD cbNeeded;
-
-				if ( EnumProcessModules( hProcess, &hMod, sizeof(hMod), 
-					&cbNeeded) )
-				{
-					GetModuleBaseName( hProcess, hMod, szProcessName, 
-						sizeof(szProcessName)/sizeof(TCHAR) );
-				}
-			}
-
-			if(!_tcscmp(szProcessName, proc))
-			{
-				return hProcess;
-			}
-
-			CloseHandle(hProcess);
-		}
-	}
-
-	return NULL;
-}
-//-------------------------------------------------------------------------
-void Kill( HANDLE hProc )
-{
-	DWORD fdwExit = 0;
-
-	if(!GetExitCodeProcess(hProc, &fdwExit))
-	{
-		LogLastErrorMessage(TEXT("GetExitCodeProcess"));
-	}
-
-	//if(!TerminateProcess(hProc, fdwExit))
-	//{
-	//	LogLastErrorMessage(TEXT("Cannot kill process"));
-	//	return;
-	//}
-
-	SLOG_TRACE("Process are killed");
-}
-//-------------------------------------------------------------------------
-void LogLastErrorMessage(LPCTSTR text) 
-{ 
-	LPVOID lpMsgBuf;
-	LPVOID lpDisplayBuf;
-	DWORD dw = GetLastError(); 
-
-	FormatMessage(
-		FORMAT_MESSAGE_ALLOCATE_BUFFER | 
-		FORMAT_MESSAGE_FROM_SYSTEM |
-		FORMAT_MESSAGE_IGNORE_INSERTS,
-		NULL,
-		dw,
-		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-		(LPTSTR) &lpMsgBuf,
-		0, NULL );
-
-	// Display the error message and exit the process
-
-	lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT, 
-		(lstrlen((LPCTSTR)lpMsgBuf)+lstrlen((LPCTSTR)text)+40)*sizeof(TCHAR)); 
-
-	StringCchPrintf((LPTSTR)lpDisplayBuf, 
-		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-		TEXT("%s. Error code %d: %s"), 
-		text, dw, lpMsgBuf);
-
-	USES_CONVERSION;
-	char* message = T2A((LPTSTR)lpDisplayBuf);
-
-	SLOG_ERROR(message);
-
-	LocalFree(lpMsgBuf);
-	LocalFree(lpDisplayBuf);
-	ExitProcess(dw); 
-}
 //-------------------------------------------------------------------------
 void ShowErrorMessage( LPTSTR text )
 {

@@ -1,6 +1,7 @@
 # VS trash
 Debug.win32
 Debug
+Release
 ipch
 *.sdf
 *.opensdf
@@ -16,6 +17,7 @@ ipch
 # Compiled Dynamic libraries
 *.so
 *.dylib
+*.lib
 
 # Compiled Static libraries
 *.lai
