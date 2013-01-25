@@ -5,23 +5,16 @@
 //-------------------------------------------------------------------------
 #include <Shlobj.h>
 #include <iostream>
-#include <windows.h>
-#include <strsafe.h>
 #include <stdio.h>
-#include <tchar.h>
-#include <psapi.h>
-#include <atlstr.h>
-#include <ctime>
+#include <conio.h>
 //-------------------------------------------------------------------------
-bool IsInstalled();
+#include "Sloth.h"
 bool CheckPassword();
 void CreatePassword();
 //-------------------------------------------------------------------------
-const char s_RegisterName[] = "SOFTWARE\\WOTKiller";
-//-------------------------------------------------------------------------
-int _tmain(int argc, _TCHAR* argv[])
+int main()
 {
-	if(IsInstalled())
+	if(Sloth::IsRegExist(Sloth::RegisterName))
 	{
 		while(CheckPassword())
 		{
@@ -30,19 +23,12 @@ int _tmain(int argc, _TCHAR* argv[])
 	}
 	else
 	{
+		Sloth::CreateRegister(Sloth::RegisterName);
 		CreatePassword();
 	}
+
+	_getch();
 	return 0;
-}
-//-------------------------------------------------------------------------
-bool IsInstalled()
-{
-	HKEY hKey = NULL;
-	bool retValue = true;
-
-	long sts = RegOpenKeyEx(HKEY_LOCAL_MACHINE, s_RegisterName, 0, KEY_READ, &hKey);
-
-	return !(ERROR_NO_MATCH == sts || ERROR_FILE_NOT_FOUND == sts) && (ERROR_SUCCESS != sts);
 }
 //-------------------------------------------------------------------------
 bool CheckPassword()
@@ -53,52 +39,27 @@ bool CheckPassword()
 
 	std::cin.getline(pass, 1024, '\n');
 
+	char data[128];
+
+	Sloth::ReadRegInfo(Sloth::RegisterName, "stash", data);
+
 	return false;
 }
 //-------------------------------------------------------------------------
 void CreatePassword()
 {
-	char pass[1024];
+	char pass[128];
 
-	std::cout << "Input password:\n";
+	std::cout << "Create password:" << std::endl;
 
-	std::cin.getline(pass, 1024, '\n');
-}
-//-------------------------------------------------------------------------
-bool CreateRegister() 
-{	
-	HKEY hKey = NULL;
-	bool retValue = true;
+	std::cin.getline(pass, 128, '\n');
 
-	//Step 1: Open the key
-	long sts = RegOpenKeyEx(HKEY_LOCAL_MACHINE, s_RegisterName, 0, KEY_READ, &hKey);
-
-	//Step 2: If failed, create the key
-	if (ERROR_NO_MATCH == sts || ERROR_FILE_NOT_FOUND == sts)
+	if(Sloth::WriteRegInfo(Sloth::RegisterName, "stash", pass))
 	{
-		long retError = RegCreateKeyEx(HKEY_LOCAL_MACHINE, s_RegisterName, 0L, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL );
-
-		if ( retError != ERROR_SUCCESS)
-		{
-			std::cout << "Could not create registry key. Error code " << retError << std::endl;
-		}
-		else
-		{
-			std::cout << "Key created" << std::endl;
-		}
-		retValue = false;
+		std::cout << "Thank you!" << std::endl;
 	}
-	else if (ERROR_SUCCESS != sts)
+	else
 	{
-		std::cout << "Cannot open registry key. Error code " << sts << std::endl;
-		retValue = false;
+		std::cout << "Fuck you! :)" << std::endl;
 	}
-	else //If it already existed, get the value from the key.
-	{
-		std::cout <<  "Registry key already exist.";
-	}
-
-	RegCloseKey(hKey);
-
-	return retValue;
 }
