@@ -50,7 +50,7 @@ void LoggerImpl( LogLevel level, const char* str )
 	log.stream << timeinfo->tm_mon + 1 << ".";
 
 	if(timeinfo->tm_mday - 9 < 0)	{	log.stream << "0";	}
-	log.stream << timeinfo->tm_mday + 1 << " ";
+	log.stream << timeinfo->tm_mday << " ";
 
 	if(timeinfo->tm_hour - 10 < 0)	{	log.stream << "0";	}
 	log.stream << timeinfo->tm_hour << ":";

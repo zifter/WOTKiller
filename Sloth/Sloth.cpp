@@ -29,7 +29,7 @@ namespace Sloth
 		return !(ERROR_NO_MATCH == sts || ERROR_FILE_NOT_FOUND == sts);
 	}
 	//-------------------------------------------------------------------------
-	bool ReadRegInfo( const char regName[], const char field[], char* data)
+	bool ReadRegInfo( const char regName[], const char field[], char data[STR_SIZE])
 	{
 		SLOG_TRACE("Read register info.");
 
@@ -81,7 +81,7 @@ namespace Sloth
 		return bRet;
 	}
 	//-------------------------------------------------------------------------
-	bool WriteRegInfo( const char regName[], const char field[], const char data[] )
+	bool WriteRegInfo( const char regName[], const char field[], const char data[STR_SIZE] )
 	{
 		SLOG_TRACE("Write register info.");
 
@@ -131,8 +131,61 @@ namespace Sloth
 		return bRet;
 	}
 	//-------------------------------------------------------------------------
+	bool ConverToChar( SRegInfo& info, char data[STR_SIZE] )
+	{
+		int seed = rand()%7345734;
+		int hash = (info.timeout << 5) + (info.timeLimit << 4)  + (info.timeCheck << 3) + (info.day << 2) + (info.enable << 1);
+
+		srand(seed);
+
+		int r1 = (rand()%11);
+		int r2 = (rand()%11);
+		int r3 = (rand()%11);
+		int r4 = (rand()%11);
+		int r5 = (rand()%11);
+
+		sprintf_s(data, 128, "%x.%o:%o:%o.%x:%x:%d", seed, 
+			info.timeout	<< r1, 
+			info.timeLimit	<< r2, 
+			info.timeCheck	<< r3, 
+			info.day		<< r4, 
+			info.enable		<< r5, hash);
+		return true;
+	}
+	//-------------------------------------------------------------------------
+	bool ConverToInfo( char data[STR_SIZE], SRegInfo& info )
+	{
+		int seed;
+		int testHash;
+
+		sscanf_s(data, "%x.%o:%o:%o.%x:%x:%d", &seed, &info.timeout, &info.timeLimit, &info.timeCheck, &info.day, &info.enable, &testHash );
+
+		srand(seed);
+
+		int r1 = (rand()%11);
+		int r2 = (rand()%11);
+		int r3 = (rand()%11);
+		int r4 = (rand()%11);
+		int r5 = (rand()%11);
+
+		info.timeout	= info.timeout		>> r1;
+		info.timeLimit	= info.timeLimit	>> r2;
+		info.timeCheck	= info.timeCheck	>> r3;
+		info.day		= info.day			>> r4;
+		info.enable		= info.enable		>> r5;
+
+		int hash = (info.timeout << 5) + (info.timeLimit << 4)  + (info.timeCheck << 3) + (info.day << 2) + (info.enable << 1);
+
+		info.valid = (testHash == hash);
+
+		return true;
+	}
+
+	//-------------------------------------------------------------------------
 	void Kill( HANDLE hProc )
 	{
+		SLOG_TRACE("Kill process");
+
 		DWORD fdwExit = 0;
 
 		if(!GetExitCodeProcess(hProc, &fdwExit))
@@ -150,7 +203,9 @@ namespace Sloth
 	}
 	//-------------------------------------------------------------------------
 	HANDLE Find( TCHAR* proc )
-	{      
+	{     
+		SLOG_TRACE("Find");
+
 		// Get the list of process identifiers.
 		DWORD aProcesses[1024], cbNeeded, cProcesses;
 		unsigned int i;
@@ -275,4 +330,29 @@ namespace Sloth
 
 		return retValue;
 	}
+	//-------------------------------------------------------------------------
+	void CreateRegisterDefault()
+	{
+		CreateRegister(RegisterName);
+		SetRegInfo(DefaultRegInfo);
+	}
+	//-------------------------------------------------------------------------
+	bool GetRegInfo( SRegInfo& info )
+	{
+		char data[STR_SIZE];
+		if(ReadRegInfo(RegisterName, "data", data))
+		{
+			ConverToInfo(data, info);
+			return true;
+		}
+		return false;
+	}
+	//-------------------------------------------------------------------------
+	bool SetRegInfo( SRegInfo& info )
+	{
+		char data[STR_SIZE];
+		ConverToChar(info, data);
+		return WriteRegInfo(RegisterName, "data", data);
+	}
+
 }

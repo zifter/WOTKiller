@@ -23,7 +23,7 @@ int main()
 	}
 	else
 	{
-		Sloth::CreateRegister(Sloth::RegisterName);
+		Sloth::CreateRegisterDefault();
 		CreatePassword();
 	}
 

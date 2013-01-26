@@ -19,39 +19,246 @@
 #pragma comment(lib, "psapi.lib")
 using std::cout; using std::endl;
 
-char RegisterName[] = "SOFTWARE\\WOTKiller";
+LPTSTR ServiceName = TEXT("WOTKiller");
+SERVICE_STATUS ServiceStatus; 
+SERVICE_STATUS_HANDLE hStatus;
 
-typedef struct _SRegInfo
-{
-	int		timeout;
-	int		timeLimit;
-	int		day;
-	bool	enable;
+void StartService();
+void RemoveService();
+void InstallService(LPTSTR path);
+void ServiceMain(int argc, char** argv);
+void ControlHandler(DWORD request);
 
-	bool	valid;
-} SRegInfo;
-
-static SRegInfo s_GlobalInfo;
-
-bool ConverToChar( SRegInfo& info, char* data );
-bool ConverToInfo( char* data, SRegInfo& info );
+bool InitService();
+bool ServiceProceed();
 
 void ShowErrorMessage(LPTSTR text);
+void KillProcess();
+void UpdateInfo(Sloth::SRegInfo& info);
+bool IsNeedToKill(Sloth::SRegInfo& info);
 
-int main( void )
+int _tmain(int argc, _TCHAR* argv[]) 
 {
-	srand(time(NULL));
+	SLOG_TRACE("_tmain");
 
-	SRegInfo info = {123, 1000, 4, false};
-	
-	char data1[128];
-	ConverToChar(info, data1);
-	Sloth::WriteRegInfo(RegisterName, "data", data1);
-	
-	char data2[128];
-	Sloth::ReadRegInfo(RegisterName, "data", data2);
-	ConverToInfo(data2, info);
+	if(argc - 1 == 0) 
+	{
+		SERVICE_TABLE_ENTRY ServiceTable[1];
+		ServiceTable[0].lpServiceName = ServiceName;
+		ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTION)ServiceMain;
 
+		if(!StartServiceCtrlDispatcher(ServiceTable)) 
+		{
+			SLOG_ERROR("Error: StartServiceCtrlDispatcher");
+		}
+	} 
+	else if( _tcscmp(argv[argc-1], TEXT("install")) == 0) 
+	{
+		InstallService(argv[0]);
+	} 
+	else if( _tcscmp(argv[argc-1], TEXT("remove")) == 0) 
+	{
+		RemoveService();
+	} 
+	else if( _tcscmp(argv[argc-1], TEXT("start")) == 0 )
+	{
+		StartService();
+	}
+}
+
+void ServiceMain(int argc, char** argv) 
+{
+	SLOG_DEBUG("ServiceMain");
+
+	int error; 
+	int i = 0;
+
+	ServiceStatus.dwServiceType		= SERVICE_WIN32_OWN_PROCESS; 
+	ServiceStatus.dwCurrentState    = SERVICE_START_PENDING; 
+	ServiceStatus.dwControlsAccepted= SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+	ServiceStatus.dwWin32ExitCode   = 0; 
+	ServiceStatus.dwServiceSpecificExitCode = 0; 
+	ServiceStatus.dwCheckPoint		= 0; 
+	ServiceStatus.dwWaitHint		= 0; 
+
+	hStatus = RegisterServiceCtrlHandler(ServiceName, (LPHANDLER_FUNCTION)ControlHandler); 
+	if (hStatus == (SERVICE_STATUS_HANDLE)0) 
+	{ 
+		return; 
+	} 
+
+	error = InitService(); 
+	if (error) 
+	{
+		ServiceStatus.dwCurrentState    = SERVICE_STOPPED; 
+		ServiceStatus.dwWin32ExitCode   = -1; 
+		SetServiceStatus(hStatus, &ServiceStatus); 
+		return; 
+	} 
+
+	ServiceStatus.dwCurrentState = SERVICE_RUNNING; 
+	SetServiceStatus (hStatus, &ServiceStatus);
+
+	while (ServiceStatus.dwCurrentState == SERVICE_RUNNING)
+	{
+		if (ServiceProceed())  
+		{
+			ServiceStatus.dwCurrentState    = SERVICE_STOPPED; 
+			ServiceStatus.dwWin32ExitCode   = -1; 
+			SetServiceStatus(hStatus, &ServiceStatus);
+			return;
+		}
+	}
+}
+//-------------------------------------------------------------------------
+void ControlHandler(DWORD request) 
+{ 
+	SLOG_TRACE("ControlHandler");
+
+	switch(request) 
+	{ 
+	case SERVICE_CONTROL_STOP: 
+		SLOG_TRACE("Stopped.");
+
+		ServiceStatus.dwWin32ExitCode = 0; 
+		ServiceStatus.dwCurrentState = SERVICE_STOPPED; 
+		SetServiceStatus (hStatus, &ServiceStatus);
+		return; 
+
+	case SERVICE_CONTROL_SHUTDOWN: 
+		SLOG_TRACE("Shutdown.");
+
+		ServiceStatus.dwWin32ExitCode = 0; 
+		ServiceStatus.dwCurrentState = SERVICE_STOPPED; 
+		SetServiceStatus (hStatus, &ServiceStatus);
+		return; 
+
+	default:
+		break;
+	} 
+
+	SetServiceStatus (hStatus, &ServiceStatus);
+
+	return; 
+} 
+//-------------------------------------------------------------------------
+void StartService( void )
+{
+	SLOG_TRACE("Start service");
+
+	SC_HANDLE hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
+	SC_HANDLE hService = OpenService(hSCManager, ServiceName, SERVICE_START);
+	if(!StartService(hService, 0, NULL)) 
+	{
+		CloseServiceHandle(hSCManager);
+		SLOG_ERROR("Error: Can't start service");
+		return;
+	}
+
+	CloseServiceHandle(hService);
+	CloseServiceHandle(hSCManager);
+	return;
+}
+//-------------------------------------------------------------------------
+void RemoveService()
+{
+	SLOG_TRACE("Remove service");
+
+	SC_HANDLE hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+	if(!hSCManager) 
+	{
+		SLOG_ERROR("Error: Can't open Service Control Manager");
+		return;
+	}
+
+	SC_HANDLE hService = OpenService(hSCManager, ServiceName, SERVICE_STOP | DELETE);
+	if(!hService) 
+	{
+		SLOG_ERROR("Error: Can't remove service");
+		CloseServiceHandle(hSCManager);
+		return;
+	}
+
+	DeleteService(hService);
+	CloseServiceHandle(hService);
+	CloseServiceHandle(hSCManager);
+	SLOG_TRACE("Success remove service!");
+
+	return;
+}
+//-------------------------------------------------------------------------
+void InstallService(LPTSTR path)
+{
+	SLOG_TRACE("Install service");
+
+	SC_HANDLE hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
+	if(!hSCManager) 
+	{
+		SLOG_ERROR("Error: Can't open Service Control Manager");
+		return;
+	}
+
+	SC_HANDLE hService = CreateService(
+		hSCManager,
+		ServiceName,
+		ServiceName,
+		SERVICE_ALL_ACCESS,
+		SERVICE_WIN32_OWN_PROCESS,
+		SERVICE_DEMAND_START,
+		SERVICE_ERROR_NORMAL,
+		path,
+		NULL, NULL, NULL, NULL, NULL
+		);
+
+	if(!hService) 
+	{
+		int err = GetLastError();
+		switch(err) 
+		{
+		case ERROR_ACCESS_DENIED: 
+			SLOG_ERROR("Error: ERROR_ACCESS_DENIED");
+			break;
+		case ERROR_CIRCULAR_DEPENDENCY:
+			SLOG_ERROR("Error: ERROR_CIRCULAR_DEPENDENCY");
+			break;
+		case ERROR_DUPLICATE_SERVICE_NAME:
+			SLOG_ERROR("Error: ERROR_DUPLICATE_SERVICE_NAME");
+			break;
+		case ERROR_INVALID_HANDLE:
+			SLOG_ERROR("Error: ERROR_INVALID_HANDLE");
+			break;
+		case ERROR_INVALID_NAME:
+			SLOG_ERROR("Error: ERROR_INVALID_NAME");
+			break;
+		case ERROR_INVALID_PARAMETER:
+			SLOG_ERROR("Error: ERROR_INVALID_PARAMETER");
+			break;
+		case ERROR_INVALID_SERVICE_ACCOUNT:
+			SLOG_ERROR("Error: ERROR_INVALID_SERVICE_ACCOUNT");
+			break;
+		case ERROR_SERVICE_EXISTS:
+			SLOG_ERROR("Error: ERROR_SERVICE_EXISTS");
+			break;
+		default:
+			SLOG_ERROR("Error: Undefined");
+		}
+		CloseServiceHandle(hSCManager);
+		return;
+	}
+	CloseServiceHandle(hService);
+
+	CloseServiceHandle(hSCManager);
+	SLOG_TRACE("Success install service!");
+	return;
+}
+//-------------------------------------------------------------------------
+void ShowErrorMessage( LPTSTR text )
+{
+	MessageBox(NULL, text, TEXT("Error"), MB_OK); 
+}
+//-------------------------------------------------------------------------
+void KillProcess()
+{
 	HANDLE hProcess = Sloth::Find(TEXT("AIMP3.exe"));
 	if(hProcess)
 	{
@@ -63,59 +270,66 @@ int main( void )
 	{
 		SLOG_DEBUG("Process not founded.");
 	}
-	int a;
-	std::cin >> a;
-	return 0;
-}
-
-//-------------------------------------------------------------------------
-void ShowErrorMessage( LPTSTR text )
-{
-	MessageBox(NULL, text, TEXT("Error"), MB_OK); 
 }
 //-------------------------------------------------------------------------
-bool ConverToChar( SRegInfo& info, char* data )
+bool IsNeedToKill( Sloth::SRegInfo& info )
 {
-	int seed = rand()%7345734;
-	int hash = (info.timeout << 4) + (info.timeLimit << 3)  + (info.day << 2) + (info.enable << 1);
-	
-	srand(seed);
+	return info.valid || ((info.timeout > info.timeCheck) && info.enable);
+}
+//-------------------------------------------------------------------------
+void UpdateInfo(Sloth::SRegInfo& info)
+{
+	if(!info.valid)
+	{
+		info = Sloth::DefaultRegInfo;
+	}
 
-	int r1 = (rand()%11);
-	int r2 = (rand()%11);
-	int r3 = (rand()%11);
-	int r4 = (rand()%11);
+	time_t rawtime;
+	struct tm * timeinfo = new struct tm;
 
-	sprintf_s(data, 128, "%x:%o:%o:%o:%x:%d", seed, 
-		info.timeout	<< r1, 
-		info.timeLimit	<< r2, 
-		info.day		<< r3, 
-		info.enable		<< r4, hash);
+	time ( &rawtime );
+	localtime_s(timeinfo, &rawtime );
+
+	if(timeinfo->tm_mday != info.day)
+	{
+		info.day = timeinfo->tm_mday;
+		info.timeout = 0;
+	}
+	info.timeout += info.timeCheck;
+}
+//-------------------------------------------------------------------------
+bool InitService()
+{
+	SLOG_TRACE("Init Service");
 	return true;
 }
 //-------------------------------------------------------------------------
-bool ConverToInfo( char* data, SRegInfo& info )
+bool ServiceProceed()
 {
-	int seed;
-	int testHash;
+	SLOG_TRACE("ServiceProceed");
+
+	srand(time(NULL));
 	
-	sscanf_s(data, "%x:%o:%o:%o:%x:%d", &seed, &info.timeout, &info.timeLimit, &info.day, &info.enable, &testHash );
-	
-	srand(seed);
+	char data[STR_SIZE];
 
-	int r1 = (rand()%11);
-	int r2 = (rand()%11);
-	int r3 = (rand()%11);
-	int r4 = (rand()%11);
+	if(!Sloth::IsRegExist(Sloth::RegisterName))
+	{
+		Sloth::CreateRegisterDefault();
+	}
 
-	info.timeout	= info.timeout		>> r1;
-	info.timeLimit	= info.timeLimit	>> r2;
-	info.day		= info.day			>> r3;
-	info.enable		= info.enable		>> r4;
+	Sloth::SRegInfo info;
+	Sloth::GetRegInfo(info);
 
-	int hash = (info.timeout << 4) + (info.timeLimit << 3)  + (info.day << 2) + (info.enable << 1);
+	UpdateInfo(info);
 
-	info.valid = (testHash == hash);
+	if(IsNeedToKill(info))
+	{
+		KillProcess();
+	}
+
+	SetRegInfo(info);
+
+	Sleep(info.timeCheck);
 
 	return true;
 }
