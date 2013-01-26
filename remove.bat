@@ -1,1 +1,1 @@
-WOTKiller.exe remove
+sc delete WOTKiller 

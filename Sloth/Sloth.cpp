@@ -193,11 +193,11 @@ namespace Sloth
 			LogLastErrorMessage(TEXT("GetExitCodeProcess"));
 		}
 
-		//if(!TerminateProcess(hProc, fdwExit))
-		//{
-		//	LogLastErrorMessage(TEXT("Cannot kill process"));
-		//	return;
-		//}
+		if(!TerminateProcess(hProc, fdwExit))
+		{
+			LogLastErrorMessage(TEXT("Cannot kill process"));
+			return;
+		}
 
 		SLOG_TRACE("Process are killed");
 	}

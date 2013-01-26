@@ -3,333 +3,204 @@
 
 #include "stdafx.h"
 
-#include <iostream>
-#include <windows.h>
-#include <strsafe.h>
-#include <stdio.h>
+#include <Windows.h>
 #include <tchar.h>
-#include <psapi.h>
-#include <atlstr.h>
-#include <ctime>
 
-#include "Aclapi.h"
 #include "SLogger.h"
 #include "Sloth.h"
 
-#pragma comment(lib, "psapi.lib")
-using std::cout; using std::endl;
+SERVICE_STATUS        g_ServiceStatus = {0};
+SERVICE_STATUS_HANDLE g_StatusHandle = NULL;
+HANDLE                g_ServiceStopEvent = INVALID_HANDLE_VALUE;
 
-LPTSTR ServiceName = TEXT("WOTKiller");
-SERVICE_STATUS ServiceStatus; 
-SERVICE_STATUS_HANDLE hStatus;
+VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv);
+VOID WINAPI ServiceCtrlHandler (DWORD);
+DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
 
-void StartService();
-void RemoveService();
-void InstallService(LPTSTR path);
-void ServiceMain(int argc, char** argv);
-void ControlHandler(DWORD request);
+#define SERVICE_NAME  _T("WOTKiller")
 
-bool InitService();
-bool ServiceProceed();
-
-void ShowErrorMessage(LPTSTR text);
-void KillProcess();
-void UpdateInfo(Sloth::SRegInfo& info);
-bool IsNeedToKill(Sloth::SRegInfo& info);
-
-int _tmain(int argc, _TCHAR* argv[]) 
+int _tmain (int argc, TCHAR *argv[])
 {
-	SLOG_TRACE("_tmain");
+	SLOG_TRACE("Service: Main: Entry");
 
-	if(argc - 1 == 0) 
+    SERVICE_TABLE_ENTRY ServiceTable[] = 
+    {
+        {SERVICE_NAME, (LPSERVICE_MAIN_FUNCTION) ServiceMain},
+        {NULL, NULL}
+    };
+
+    if (StartServiceCtrlDispatcher (ServiceTable) == FALSE)
+    {
+		SLOG_ERROR("Service: Main: StartServiceCtrlDispatcher returned error");
+		return GetLastError ();
+    }
+
+    SLOG_TRACE("Service: Main: Exit");
+    return 0;
+}
+
+
+VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
+{
+    DWORD Status = E_FAIL;
+
+    SLOG_TRACE("Service: ServiceMain: Entry");
+
+    g_StatusHandle = RegisterServiceCtrlHandler (SERVICE_NAME, ServiceCtrlHandler);
+
+    if (g_StatusHandle == NULL) 
+    {
+        SLOG_ERROR("Service: ServiceMain: RegisterServiceCtrlHandler returned error");
+        goto EXIT;
+    }
+
+    // Tell the service controller we are starting
+    ZeroMemory (&g_ServiceStatus, sizeof (g_ServiceStatus));
+    g_ServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+    g_ServiceStatus.dwControlsAccepted = 0;
+    g_ServiceStatus.dwCurrentState = SERVICE_START_PENDING;
+    g_ServiceStatus.dwWin32ExitCode = 0;
+    g_ServiceStatus.dwServiceSpecificExitCode = 0;
+    g_ServiceStatus.dwCheckPoint = 0;
+
+    if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE) 
+    {
+        SLOG_ERROR("Service: ServiceMain: SetServiceStatus returned error");
+    }
+
+    /* 
+     * Perform tasks neccesary to start the service here
+     */
+    SLOG_TRACE("Service: ServiceMain: Performing Service Start Operations");
+
+    // Create stop event to wait on later.
+    g_ServiceStopEvent = CreateEvent (NULL, TRUE, FALSE, NULL);
+    if (g_ServiceStopEvent == NULL) 
+    {
+        SLOG_ERROR("Service: ServiceMain: CreateEvent(g_ServiceStopEvent) returned error");
+
+        g_ServiceStatus.dwControlsAccepted = 0;
+        g_ServiceStatus.dwCurrentState = SERVICE_STOPPED;
+        g_ServiceStatus.dwWin32ExitCode = GetLastError();
+        g_ServiceStatus.dwCheckPoint = 1;
+
+        if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)
+	    {
+		    SLOG_ERROR("Service: ServiceMain: SetServiceStatus returned error");
+	    }
+        goto EXIT; 
+    }    
+
+    // Tell the service controller we are started
+    g_ServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+    g_ServiceStatus.dwCurrentState = SERVICE_RUNNING;
+    g_ServiceStatus.dwWin32ExitCode = 0;
+    g_ServiceStatus.dwCheckPoint = 0;
+
+    if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)
+    {
+	    SLOG_ERROR("Service: ServiceMain: SetServiceStatus returned error");
+    }
+
+    // Start the thread that will perform the main task of the service
+    HANDLE hThread = CreateThread (NULL, 0, ServiceWorkerThread, NULL, 0, NULL);
+
+    SLOG_TRACE("Service: ServiceMain: Waiting for Worker Thread to complete");
+
+    // Wait until our worker thread exits effectively signaling that the service needs to stop
+    WaitForSingleObject (hThread, INFINITE);
+    
+    SLOG_TRACE("Service: ServiceMain: Worker Thread Stop Event signaled");
+    
+    
+    /* 
+     * Perform any cleanup tasks
+     */
+    SLOG_ERROR("Service: ServiceMain: Performing Cleanup Operations");
+
+    CloseHandle (g_ServiceStopEvent);
+
+    g_ServiceStatus.dwControlsAccepted = 0;
+    g_ServiceStatus.dwCurrentState = SERVICE_STOPPED;
+    g_ServiceStatus.dwWin32ExitCode = 0;
+    g_ServiceStatus.dwCheckPoint = 3;
+
+    if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)
+    {
+	    SLOG_ERROR("Service: ServiceMain: SetServiceStatus returned error");
+    }
+    
+    EXIT:
+    SLOG_TRACE("Service: ServiceMain: Exit");
+
+    return;
+}
+
+
+VOID WINAPI ServiceCtrlHandler (DWORD CtrlCode)
+{
+    SLOG_TRACE("Service: ServiceCtrlHandler: Entry");
+
+    switch (CtrlCode) 
 	{
-		SERVICE_TABLE_ENTRY ServiceTable[1];
-		ServiceTable[0].lpServiceName = ServiceName;
-		ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTION)ServiceMain;
+     case SERVICE_CONTROL_STOP :
 
-		if(!StartServiceCtrlDispatcher(ServiceTable)) 
+        SLOG_TRACE("Service: ServiceCtrlHandler: SERVICE_CONTROL_STOP Request");
+
+        if (g_ServiceStatus.dwCurrentState != SERVICE_RUNNING)
+           break;
+
+        /* 
+         * Perform tasks neccesary to stop the service here 
+         */
+        
+        g_ServiceStatus.dwControlsAccepted = 0;
+        g_ServiceStatus.dwCurrentState = SERVICE_STOP_PENDING;
+        g_ServiceStatus.dwWin32ExitCode = 0;
+        g_ServiceStatus.dwCheckPoint = 4;
+
+        if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)
 		{
-			SLOG_ERROR("Error: StartServiceCtrlDispatcher");
+			SLOG_TRACE("Service: ServiceCtrlHandler: SetServiceStatus returned error");
 		}
-	} 
-	else if( _tcscmp(argv[argc-1], TEXT("install")) == 0) 
-	{
-		InstallService(argv[0]);
-	} 
-	else if( _tcscmp(argv[argc-1], TEXT("remove")) == 0) 
-	{
-		RemoveService();
-	} 
-	else if( _tcscmp(argv[argc-1], TEXT("start")) == 0 )
-	{
-		StartService();
-	}
+
+        // This will signal the worker thread to start shutting down
+        SetEvent (g_ServiceStopEvent);
+
+        break;
+
+     default:
+         break;
+    }
+
+    SLOG_TRACE("Service: ServiceCtrlHandler: Exit");
 }
 
-void ServiceMain(int argc, char** argv) 
+
+DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 {
-	SLOG_DEBUG("ServiceMain");
+    SLOG_TRACE("Service: ServiceWorkerThread: Entry");
 
-	int error; 
-	int i = 0;
-
-	ServiceStatus.dwServiceType		= SERVICE_WIN32_OWN_PROCESS; 
-	ServiceStatus.dwCurrentState    = SERVICE_START_PENDING; 
-	ServiceStatus.dwControlsAccepted= SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
-	ServiceStatus.dwWin32ExitCode   = 0; 
-	ServiceStatus.dwServiceSpecificExitCode = 0; 
-	ServiceStatus.dwCheckPoint		= 0; 
-	ServiceStatus.dwWaitHint		= 0; 
-
-	hStatus = RegisterServiceCtrlHandler(ServiceName, (LPHANDLER_FUNCTION)ControlHandler); 
-	if (hStatus == (SERVICE_STATUS_HANDLE)0) 
-	{ 
-		return; 
-	} 
-
-	error = InitService(); 
-	if (error) 
-	{
-		ServiceStatus.dwCurrentState    = SERVICE_STOPPED; 
-		ServiceStatus.dwWin32ExitCode   = -1; 
-		SetServiceStatus(hStatus, &ServiceStatus); 
-		return; 
-	} 
-
-	ServiceStatus.dwCurrentState = SERVICE_RUNNING; 
-	SetServiceStatus (hStatus, &ServiceStatus);
-
-	while (ServiceStatus.dwCurrentState == SERVICE_RUNNING)
-	{
-		if (ServiceProceed())  
+    //  Periodically check if the service has been requested to stop
+    while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
+    {        
+		HANDLE hProcess = Sloth::Find(TEXT("AIMP3.exe"));
+		if(hProcess)
 		{
-			ServiceStatus.dwCurrentState    = SERVICE_STOPPED; 
-			ServiceStatus.dwWin32ExitCode   = -1; 
-			SetServiceStatus(hStatus, &ServiceStatus);
-			return;
+			SLOG_DEBUG("Process %s founded!", "AIMP3.exe");
+			Sloth::Kill(hProcess);
+			CloseHandle(hProcess);
 		}
-	}
-}
-//-------------------------------------------------------------------------
-void ControlHandler(DWORD request) 
-{ 
-	SLOG_TRACE("ControlHandler");
-
-	switch(request) 
-	{ 
-	case SERVICE_CONTROL_STOP: 
-		SLOG_TRACE("Stopped.");
-
-		ServiceStatus.dwWin32ExitCode = 0; 
-		ServiceStatus.dwCurrentState = SERVICE_STOPPED; 
-		SetServiceStatus (hStatus, &ServiceStatus);
-		return; 
-
-	case SERVICE_CONTROL_SHUTDOWN: 
-		SLOG_TRACE("Shutdown.");
-
-		ServiceStatus.dwWin32ExitCode = 0; 
-		ServiceStatus.dwCurrentState = SERVICE_STOPPED; 
-		SetServiceStatus (hStatus, &ServiceStatus);
-		return; 
-
-	default:
-		break;
-	} 
-
-	SetServiceStatus (hStatus, &ServiceStatus);
-
-	return; 
-} 
-//-------------------------------------------------------------------------
-void StartService( void )
-{
-	SLOG_TRACE("Start service");
-
-	SC_HANDLE hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
-	SC_HANDLE hService = OpenService(hSCManager, ServiceName, SERVICE_START);
-	if(!StartService(hService, 0, NULL)) 
-	{
-		CloseServiceHandle(hSCManager);
-		SLOG_ERROR("Error: Can't start service");
-		return;
-	}
-
-	CloseServiceHandle(hService);
-	CloseServiceHandle(hSCManager);
-	return;
-}
-//-------------------------------------------------------------------------
-void RemoveService()
-{
-	SLOG_TRACE("Remove service");
-
-	SC_HANDLE hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-	if(!hSCManager) 
-	{
-		SLOG_ERROR("Error: Can't open Service Control Manager");
-		return;
-	}
-
-	SC_HANDLE hService = OpenService(hSCManager, ServiceName, SERVICE_STOP | DELETE);
-	if(!hService) 
-	{
-		SLOG_ERROR("Error: Can't remove service");
-		CloseServiceHandle(hSCManager);
-		return;
-	}
-
-	DeleteService(hService);
-	CloseServiceHandle(hService);
-	CloseServiceHandle(hSCManager);
-	SLOG_TRACE("Success remove service!");
-
-	return;
-}
-//-------------------------------------------------------------------------
-void InstallService(LPTSTR path)
-{
-	SLOG_TRACE("Install service");
-
-	SC_HANDLE hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
-	if(!hSCManager) 
-	{
-		SLOG_ERROR("Error: Can't open Service Control Manager");
-		return;
-	}
-
-	SC_HANDLE hService = CreateService(
-		hSCManager,
-		ServiceName,
-		ServiceName,
-		SERVICE_ALL_ACCESS,
-		SERVICE_WIN32_OWN_PROCESS,
-		SERVICE_DEMAND_START,
-		SERVICE_ERROR_NORMAL,
-		path,
-		NULL, NULL, NULL, NULL, NULL
-		);
-
-	if(!hService) 
-	{
-		int err = GetLastError();
-		switch(err) 
+		else
 		{
-		case ERROR_ACCESS_DENIED: 
-			SLOG_ERROR("Error: ERROR_ACCESS_DENIED");
-			break;
-		case ERROR_CIRCULAR_DEPENDENCY:
-			SLOG_ERROR("Error: ERROR_CIRCULAR_DEPENDENCY");
-			break;
-		case ERROR_DUPLICATE_SERVICE_NAME:
-			SLOG_ERROR("Error: ERROR_DUPLICATE_SERVICE_NAME");
-			break;
-		case ERROR_INVALID_HANDLE:
-			SLOG_ERROR("Error: ERROR_INVALID_HANDLE");
-			break;
-		case ERROR_INVALID_NAME:
-			SLOG_ERROR("Error: ERROR_INVALID_NAME");
-			break;
-		case ERROR_INVALID_PARAMETER:
-			SLOG_ERROR("Error: ERROR_INVALID_PARAMETER");
-			break;
-		case ERROR_INVALID_SERVICE_ACCOUNT:
-			SLOG_ERROR("Error: ERROR_INVALID_SERVICE_ACCOUNT");
-			break;
-		case ERROR_SERVICE_EXISTS:
-			SLOG_ERROR("Error: ERROR_SERVICE_EXISTS");
-			break;
-		default:
-			SLOG_ERROR("Error: Undefined");
+			SLOG_DEBUG("Process not founded.");
 		}
-		CloseServiceHandle(hSCManager);
-		return;
-	}
-	CloseServiceHandle(hService);
 
-	CloseServiceHandle(hSCManager);
-	SLOG_TRACE("Success install service!");
-	return;
-}
-//-------------------------------------------------------------------------
-void ShowErrorMessage( LPTSTR text )
-{
-	MessageBox(NULL, text, TEXT("Error"), MB_OK); 
-}
-//-------------------------------------------------------------------------
-void KillProcess()
-{
-	HANDLE hProcess = Sloth::Find(TEXT("AIMP3.exe"));
-	if(hProcess)
-	{
-		SLOG_DEBUG("Process %s founded!", "AIMP3.exe");
-		Sloth::Kill(hProcess);
-		CloseHandle(hProcess);
-	}
-	else
-	{
-		SLOG_DEBUG("Process not founded.");
-	}
-}
-//-------------------------------------------------------------------------
-bool IsNeedToKill( Sloth::SRegInfo& info )
-{
-	return info.valid || ((info.timeout > info.timeCheck) && info.enable);
-}
-//-------------------------------------------------------------------------
-void UpdateInfo(Sloth::SRegInfo& info)
-{
-	if(!info.valid)
-	{
-		info = Sloth::DefaultRegInfo;
-	}
+        //  Simulate some work by sleeping
+        Sleep(3000);
+    }
 
-	time_t rawtime;
-	struct tm * timeinfo = new struct tm;
+    SLOG_TRACE("Service: ServiceWorkerThread: Exit");
 
-	time ( &rawtime );
-	localtime_s(timeinfo, &rawtime );
-
-	if(timeinfo->tm_mday != info.day)
-	{
-		info.day = timeinfo->tm_mday;
-		info.timeout = 0;
-	}
-	info.timeout += info.timeCheck;
-}
-//-------------------------------------------------------------------------
-bool InitService()
-{
-	SLOG_TRACE("Init Service");
-	return true;
-}
-//-------------------------------------------------------------------------
-bool ServiceProceed()
-{
-	SLOG_TRACE("ServiceProceed");
-
-	srand(time(NULL));
-	
-	char data[STR_SIZE];
-
-	if(!Sloth::IsRegExist(Sloth::RegisterName))
-	{
-		Sloth::CreateRegisterDefault();
-	}
-
-	Sloth::SRegInfo info;
-	Sloth::GetRegInfo(info);
-
-	UpdateInfo(info);
-
-	if(IsNeedToKill(info))
-	{
-		KillProcess();
-	}
-
-	SetRegInfo(info);
-
-	Sleep(info.timeCheck);
-
-	return true;
+    return ERROR_SUCCESS;
 }
