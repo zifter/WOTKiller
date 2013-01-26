@@ -21,7 +21,7 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
 
 int _tmain (int argc, TCHAR *argv[])
 {
-	SLOG_TRACE("Service: Main: Entry");
+	SLOG_DEBUG("Service: Main: Entry");
 
     SERVICE_TABLE_ENTRY ServiceTable[] = 
     {
@@ -35,7 +35,7 @@ int _tmain (int argc, TCHAR *argv[])
 		return GetLastError ();
     }
 
-    SLOG_TRACE("Service: Main: Exit");
+    SLOG_DEBUG("Service: Main: Exit");
     return 0;
 }
 
@@ -44,7 +44,7 @@ VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
 {
     DWORD Status = E_FAIL;
 
-    SLOG_TRACE("Service: ServiceMain: Entry");
+    SLOG_DEBUG("Service: ServiceMain: Entry");
 
     g_StatusHandle = RegisterServiceCtrlHandler (SERVICE_NAME, ServiceCtrlHandler);
 
@@ -68,10 +68,7 @@ VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
         SLOG_ERROR("Service: ServiceMain: SetServiceStatus returned error");
     }
 
-    /* 
-     * Perform tasks neccesary to start the service here
-     */
-    SLOG_TRACE("Service: ServiceMain: Performing Service Start Operations");
+    SLOG_DEBUG("Service: ServiceMain: Performing Service Start Operations");
 
     // Create stop event to wait on later.
     g_ServiceStopEvent = CreateEvent (NULL, TRUE, FALSE, NULL);
@@ -110,13 +107,7 @@ VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
     // Wait until our worker thread exits effectively signaling that the service needs to stop
     WaitForSingleObject (hThread, INFINITE);
     
-    SLOG_TRACE("Service: ServiceMain: Worker Thread Stop Event signaled");
-    
-    
-    /* 
-     * Perform any cleanup tasks
-     */
-    SLOG_ERROR("Service: ServiceMain: Performing Cleanup Operations");
+    SLOG_DEBUG("Service: ServiceMain: Worker Thread Stop Event signaled");
 
     CloseHandle (g_ServiceStopEvent);
 
@@ -131,7 +122,7 @@ VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
     }
     
     EXIT:
-    SLOG_TRACE("Service: ServiceMain: Exit");
+    SLOG_DEBUG("Service: ServiceMain: Exit");
 
     return;
 }
@@ -139,21 +130,17 @@ VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
 
 VOID WINAPI ServiceCtrlHandler (DWORD CtrlCode)
 {
-    SLOG_TRACE("Service: ServiceCtrlHandler: Entry");
+    SLOG_DEBUG("Service: ServiceCtrlHandler: Entry");
 
     switch (CtrlCode) 
 	{
      case SERVICE_CONTROL_STOP :
 
-        SLOG_TRACE("Service: ServiceCtrlHandler: SERVICE_CONTROL_STOP Request");
+        SLOG_DEBUG("Service: ServiceCtrlHandler: SERVICE_CONTROL_STOP Request");
 
         if (g_ServiceStatus.dwCurrentState != SERVICE_RUNNING)
            break;
 
-        /* 
-         * Perform tasks neccesary to stop the service here 
-         */
-        
         g_ServiceStatus.dwControlsAccepted = 0;
         g_ServiceStatus.dwCurrentState = SERVICE_STOP_PENDING;
         g_ServiceStatus.dwWin32ExitCode = 0;
@@ -161,7 +148,7 @@ VOID WINAPI ServiceCtrlHandler (DWORD CtrlCode)
 
         if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)
 		{
-			SLOG_TRACE("Service: ServiceCtrlHandler: SetServiceStatus returned error");
+			SLOG_ERROR("Service: ServiceCtrlHandler: SetServiceStatus returned error");
 		}
 
         // This will signal the worker thread to start shutting down
@@ -173,34 +160,52 @@ VOID WINAPI ServiceCtrlHandler (DWORD CtrlCode)
          break;
     }
 
-    SLOG_TRACE("Service: ServiceCtrlHandler: Exit");
+    SLOG_DEBUG("Service: ServiceCtrlHandler: Exit");
 }
 
 
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 {
-    SLOG_TRACE("Service: ServiceWorkerThread: Entry");
+    SLOG_DEBUG("Service: ServiceWorkerThread: Entry");
 
     //  Periodically check if the service has been requested to stop
     while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
-    {        
-		HANDLE hProcess = Sloth::Find(TEXT("AIMP3.exe"));
-		if(hProcess)
+    {       
+
+		char data[STR_SIZE];
+
+		if(!Sloth::IsRegExist(Sloth::RegisterName))
 		{
-			SLOG_DEBUG("Process %s founded!", "AIMP3.exe");
-			Sloth::Kill(hProcess);
-			CloseHandle(hProcess);
-		}
-		else
-		{
-			SLOG_DEBUG("Process not founded.");
+			Sloth::CreateRegisterDefault();
 		}
 
-        //  Simulate some work by sleeping
-        Sleep(3000);
+		Sloth::SRegInfo cInfo;
+		Sloth::GetRegInfo(cInfo);
+
+		cInfo.Update();
+
+		if(cInfo.IsNeedToKill())
+		{
+			HANDLE hProcess = Sloth::Find(TEXT("AIMP3.exe"));
+			if(hProcess)
+			{
+				SLOG_DEBUG("Process %s founded!", "AIMP3.exe");
+				Sloth::Kill(hProcess);
+
+				CloseHandle(hProcess);
+			}
+			else
+			{
+				SLOG_DEBUG("Process not founded.");
+			}
+		}
+
+		SetRegInfo(cInfo);
+
+		Sleep(cInfo.timeCheck*1000);
     }
 
-    SLOG_TRACE("Service: ServiceWorkerThread: Exit");
+    SLOG_DEBUG("Service: ServiceWorkerThread: Exit");
 
     return ERROR_SUCCESS;
 }

@@ -9,9 +9,13 @@
 namespace Sloth {
 
 	static const char RegisterName[] = "SOFTWARE\\WOTKiller";
+	static const char RegisterData[] = "data";
+	static const char RegisterPass[] = "stash";
+	static char DefaultPass[] = "wotkiller_default_pass_bitch";
 
-	typedef struct _SRegInfo
+	class SRegInfo
 	{
+	public:
 		/* How long has it.	*/
 		int		timeout; 
 		/* How long you can play.	*/
@@ -25,12 +29,22 @@ namespace Sloth {
 
 		/* This reg info is valid.	*/
 		bool	valid;
-	} SRegInfo;
 
-	static SRegInfo DefaultRegInfo = {0, 0, 60, -1, true, true};
+		void Update();
+
+		bool IsNeedToKill();
+	};
+
+	static SRegInfo DefaultRegInfo = {0, 0, 3, -1, true, true};
 
 	bool ConverToChar( SRegInfo& info, char data[STR_SIZE] );
 	bool ConverToInfo( char data[STR_SIZE], SRegInfo& info );
+
+	void Encrypt(char data[STR_SIZE]);
+	void Dencrypt(char data[STR_SIZE]);
+	bool IsPassExist();
+	void SetPass(char data[STR_SIZE]);
+	void GetPass(char data[STR_SIZE]);
 
 	//process
 	HANDLE Find(TCHAR* proc);
@@ -39,7 +53,6 @@ namespace Sloth {
 	bool GetRegInfo(SRegInfo& info);
 	bool SetRegInfo(SRegInfo& info);
 	void CreateRegisterDefault();
-
 
 	// registry
 	bool IsRegExist(const char regName[]);

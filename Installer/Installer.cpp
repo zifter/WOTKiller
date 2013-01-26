@@ -11,21 +11,28 @@
 #include "Sloth.h"
 bool CheckPassword();
 void CreatePassword();
+void CreateNewRegInfo();
 //-------------------------------------------------------------------------
 int main()
 {
-	if(Sloth::IsRegExist(Sloth::RegisterName))
-	{
-		while(CheckPassword())
-		{
-			Sleep(1000);
-		}
-	}
-	else
+	if(!Sloth::IsRegExist(Sloth::RegisterName))
 	{
 		Sloth::CreateRegisterDefault();
+	}
+
+	if(!Sloth::IsPassExist())
+	{
 		CreatePassword();
 	}
+
+	if(!CheckPassword())
+	{
+		std::cout << "Fuck you! :)" << std::endl;
+		return 0;
+	}
+
+	CreateNewRegInfo();
+	std::cout << "Good buy!" << std::endl;
 
 	_getch();
 	return 0;
@@ -33,33 +40,60 @@ int main()
 //-------------------------------------------------------------------------
 bool CheckPassword()
 {
-	char pass[1024];
+	char pass[STR_SIZE];
 
 	std::cout << "Password:\n";
 
-	std::cin.getline(pass, 1024, '\n');
+	std::cin.getline(pass, STR_SIZE, '\n');
 
-	char data[128];
+	char data[STR_SIZE];
 
-	Sloth::ReadRegInfo(Sloth::RegisterName, "stash", data);
+	Sloth::GetPass(data);
 
-	return false;
+	return (strcmp(data, pass) == 0);
 }
 //-------------------------------------------------------------------------
 void CreatePassword()
 {
-	char pass[128];
+	char pass[STR_SIZE];
 
 	std::cout << "Create password:" << std::endl;
 
-	std::cin.getline(pass, 128, '\n');
+	std::cin.getline(pass, STR_SIZE, '\n');
 
-	if(Sloth::WriteRegInfo(Sloth::RegisterName, "stash", pass))
+	Sloth::SetPass(pass);
+}
+//-------------------------------------------------------------------------
+void CreateNewRegInfo()
+{
+	std::cout << "Are you want to enable? (y)es/(n)o" << std::endl;
+
+	char enabled = true;
+	char enabledStr[128];
+	std::cin.getline(enabledStr, 128, '\n');
+
+	if(strcmp(enabledStr, "n")==0)
 	{
-		std::cout << "Thank you!" << std::endl;
+		enabled = false;
 	}
-	else
+
+	std::cout << "\nHow long are you allowed to play? Please, enter time in seconds." << std::endl;
+
+	int time;
+	std::cin >> time;
+
+	if(time > 86400)
 	{
-		std::cout << "Fuck you! :)" << std::endl;
+		time = 86400;
 	}
+	if(time < 0)
+	{
+		time = 0;
+	}
+
+	Sloth::SRegInfo info = Sloth::DefaultRegInfo;
+	info.timeLimit = time;
+	info.enable = enabled;
+
+	Sloth::SetRegInfo(info);
 }
