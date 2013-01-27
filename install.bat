@@ -1,1 +1,0 @@
-sc create WOTKiller binPath= E:\!project\WOTKiller\Debug\WOTKiller.exe

@@ -1,0 +1,1 @@
+sc create WifeControl binPath= %CD%/ProcInter.exe start= auto displayname= "Force process interrupt"

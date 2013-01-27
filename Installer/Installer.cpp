@@ -9,6 +9,8 @@
 #include <conio.h>
 //-------------------------------------------------------------------------
 #include "Sloth.h"
+#include "SLogger.h"
+//-------------------------------------------------------------------------
 bool CheckPassword();
 void CreatePassword();
 void CreateNewRegInfo();
@@ -40,6 +42,8 @@ int main()
 //-------------------------------------------------------------------------
 bool CheckPassword()
 {
+	SLOG_TRACE("Check pass");
+
 	char pass[STR_SIZE];
 
 	std::cout << "Password:\n";
@@ -61,11 +65,15 @@ void CreatePassword()
 
 	std::cin.getline(pass, STR_SIZE, '\n');
 
+	SLOG_TRACE("Set new pass");
+
 	Sloth::SetPass(pass);
 }
 //-------------------------------------------------------------------------
 void CreateNewRegInfo()
 {
+	SLOG_TRACE("Create new registrt info");
+
 	std::cout << "Are you want to enable? (y)es/(n)o" << std::endl;
 
 	char enabled = true;
@@ -77,14 +85,14 @@ void CreateNewRegInfo()
 		enabled = false;
 	}
 
-	std::cout << "\nHow long are you allowed to play? Please, enter time in seconds." << std::endl;
+	std::cout << "\nHow long are you allowed to play? Please, enter time in minutes." << std::endl;
 
 	int time;
 	std::cin >> time;
 
-	if(time > 86400)
+	if(time > 12440)
 	{
-		time = 86400;
+		time = 12440;
 	}
 	if(time < 0)
 	{
@@ -92,8 +100,9 @@ void CreateNewRegInfo()
 	}
 
 	Sloth::SRegInfo info = Sloth::DefaultRegInfo;
-	info.timeLimit = time;
+	info.timeLimit = time*60;
 	info.enable = enabled;
 
+	Sloth::LogRegInfo(info);
 	Sloth::SetRegInfo(info);
 }

@@ -74,7 +74,7 @@ SLogger::SLogger()
 	{
 		if ( SUCCEEDED( SHGetFolderPath( NULL, CSIDL_LOCAL_APPDATA, NULL, 0, path ) ) )
 		{
-			PathAppend( path, _T("\\WOTKiller") );
+			PathAppend( path, _T("\\ProcInter") );
 		}
 
 		if (CreateDirectory(path, NULL) ||

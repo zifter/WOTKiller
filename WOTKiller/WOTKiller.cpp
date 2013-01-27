@@ -16,8 +16,10 @@ HANDLE                g_ServiceStopEvent = INVALID_HANDLE_VALUE;
 VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv);
 VOID WINAPI ServiceCtrlHandler (DWORD);
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
+VOID WINAPI GrantShutdownPrivileges();
 
-#define SERVICE_NAME  _T("WOTKiller")
+#define SERVICE_NAME  _T("WifeControl")
+#define PROCESS_NAME  ("WorldOfTanks.exe")
 
 int _tmain (int argc, TCHAR *argv[])
 {
@@ -99,6 +101,8 @@ VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
 	    SLOG_ERROR("Service: ServiceMain: SetServiceStatus returned error");
     }
 
+ 	GrantShutdownPrivileges();
+
     // Start the thread that will perform the main task of the service
     HANDLE hThread = CreateThread (NULL, 0, ServiceWorkerThread, NULL, 0, NULL);
 
@@ -172,8 +176,6 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
     while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
     {       
 
-		char data[STR_SIZE];
-
 		if(!Sloth::IsRegExist(Sloth::RegisterName))
 		{
 			Sloth::CreateRegisterDefault();
@@ -181,26 +183,43 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 
 		Sloth::SRegInfo cInfo;
 		Sloth::GetRegInfo(cInfo);
+		Sloth::LogRegInfo(cInfo);
 
-		cInfo.Update();
+		HANDLE hProcess = Sloth::Find(TEXT(PROCESS_NAME));
 
-		if(cInfo.IsNeedToKill())
+		if(hProcess)
 		{
-			HANDLE hProcess = Sloth::Find(TEXT("AIMP3.exe"));
-			if(hProcess)
+			SLOG_TRACE("Process %s founded!", PROCESS_NAME);
+			cInfo.Update();
+							
+			if(cInfo.IsNeedToKill())
 			{
-				SLOG_DEBUG("Process %s founded!", "AIMP3.exe");
 				Sloth::Kill(hProcess);
+
+				DWORD status = InitiateShutdown(
+					NULL,
+					NULL,
+					0,
+					SHUTDOWN_FORCE_OTHERS |
+					SHUTDOWN_NOREBOOT,
+					SHTDN_REASON_MAJOR_APPLICATION
+					);
+				
+				if(status == ERROR_SUCCESS)
+				{
+					SLOG_ERROR("Cannot shutdown! Error code %", GetLastError());
+				}
 
 				CloseHandle(hProcess);
 			}
-			else
-			{
-				SLOG_DEBUG("Process not founded.");
-			}
-		}
 
-		SetRegInfo(cInfo);
+			LogRegInfo(cInfo);
+			SetRegInfo(cInfo);
+		}
+		else
+		{
+			SLOG_TRACE("Process not founded.");
+		}
 
 		Sleep(cInfo.timeCheck*1000);
     }
@@ -209,3 +228,39 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 
     return ERROR_SUCCESS;
 }
+//-------------------------------------------------------------------------
+VOID WINAPI GrantShutdownPrivileges()
+{
+	HANDLE hToken; 
+	TOKEN_PRIVILEGES tkp; 
+
+	OpenProcessToken(
+		GetCurrentProcess(),
+		TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY,
+		&hToken
+		); 
+
+	LookupPrivilegeValue(
+		NULL,
+		SE_SHUTDOWN_NAME,
+		&tkp.Privileges[0].Luid
+		); 
+
+	tkp.PrivilegeCount = 1;
+
+	// Get shutdown privilege for this process. 
+	tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+	if(!AdjustTokenPrivileges(
+		hToken,
+		FALSE, 
+		&tkp, 
+		0, 
+		(PTOKEN_PRIVILEGES) NULL, 
+		0)
+		)
+	{
+		SLOG_ERROR("AdjustTokenPrivileges %d", GetLastError());
+	}
+}
+//-------------------------------------------------------------------------

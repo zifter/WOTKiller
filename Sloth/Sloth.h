@@ -8,10 +8,10 @@
 
 namespace Sloth {
 
-	static const char RegisterName[] = "SOFTWARE\\WOTKiller";
+	static const char RegisterName[] = "SOFTWARE\\ProcInter";
 	static const char RegisterData[] = "data";
 	static const char RegisterPass[] = "stash";
-	static char DefaultPass[] = "wotkiller_default_pass_bitch";
+	static char DefaultPass[] = "procinter_default_pass_bitch";
 
 	class SRegInfo
 	{
@@ -35,7 +35,9 @@ namespace Sloth {
 		bool IsNeedToKill();
 	};
 
-	static SRegInfo DefaultRegInfo = {0, 0, 3, -1, true, true};
+	static SRegInfo DefaultRegInfo = {0, 0, 30, -1, true, true};
+
+	void LogRegInfo(SRegInfo& info);
 
 	bool ConverToChar( SRegInfo& info, char data[STR_SIZE] );
 	bool ConverToInfo( char data[STR_SIZE], SRegInfo& info );
