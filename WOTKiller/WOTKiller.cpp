@@ -194,8 +194,6 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 							
 			if(cInfo.IsNeedToKill())
 			{
-				Sloth::Kill(hProcess);
-
 				DWORD status = InitiateShutdown(
 					NULL,
 					NULL,
@@ -205,9 +203,10 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 					SHTDN_REASON_MAJOR_APPLICATION
 					);
 				
-				if(status == ERROR_SUCCESS)
+				if(status != ERROR_SUCCESS)
 				{
-					SLOG_ERROR("Cannot shutdown! Error code %", GetLastError());
+                    Sloth::Kill(hProcess);
+                    SLOG_ERROR("Cannot shutdown! Error code %", GetLastError());
 				}
 
 				CloseHandle(hProcess);
